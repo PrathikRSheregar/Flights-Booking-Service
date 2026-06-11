@@ -1,25 +1,25 @@
-const { StatusCodes } = require("http-status-codes");
-const { BookingService } = require("../services");
+const { StatusCodes } = require('http-status-codes');
+const { BookingService } = require('../services');
 
 async function createBooking(req, res) {
     try {
-        const { flightId, userId, seats } = req.body;
+        const { flightId, userId, noOfSeats } = req.body;
         const response = await BookingService.createBooking({
             flightId,
             userId,
-            noOfSeats: seats
+            noOfSeats
         });
 
         return res.status(StatusCodes.OK).json({
             success: true,
             data: response,
-            message: "Booking created successfully"
+            message: 'Booking created successfully'
         });
 
     } catch (error) {
         return res.status(error.statusCode || StatusCodes.INTERNAL_SERVER_ERROR).json({
             success: false,
-            error: error.message || "Something went wrong"
+            error: error.message || 'Something went wrong'
         });
     }
 }

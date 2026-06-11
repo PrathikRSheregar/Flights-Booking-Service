@@ -1,41 +1,68 @@
-const axios = require("axios");
-const dotenv = require("dotenv");
+const axios = require('axios');
+const dotenv = require('dotenv');
 dotenv.config();
-
-const AppError = require("../utils/errors/App-error");
-const db = require("../models");
-const { StatusCodes } = require("http-status-codes");
+const { Enums } = require('../utils/common');
+const { Booking } = require('../models');
+const AppError = require('../utils/errors/App-error');
+const { StatusCodes } = require('http-status-codes');
 
 async function createBooking(data) {
     try {
-        return await db.sequelize.transaction(async (t) => {
-
-            // 1. Call flight service
-            const flight = await axios.get(
-                `${process.env.FLIGHT_SERVICE}/api/v1/flights/${data.flightId}`
-            );
-
-            const flightData = flight.data.data;
-
-            // 2. Validate seats
-            if (data.noOfSeats > flightData.remainingSeats) {
-                throw new AppError(
-                    "Not enough seats available",
-                    StatusCodes.BAD_REQUEST
-                );
+        await axios.patch(
+            `${process.env.FLIGHT_SERVICE}/api/v1/flights/${data.flightId}/seats`,
+            {
+                seats: data.noOfSeats,
+                dec: true
             }
-
-            // 3. (IMPORTANT) reserve seats in flight service
-            // await axios.post(... reserve API)
-
-            // 4. create booking in DB (example)
-            // const booking = await db.Booking.create({...}, { transaction: t });
-
-            return true;
+        );
+        const flight=await axios.get(
+            `${process.env.FLIGHT_SERVICE}/api/v1/flights/${data.flightId}`,
+        )
+        const flightData=flight.data.data;
+        const booking = await Booking.create({
+            flightId: data.flightId,
+            userId: data.userId,
+            noOfSeats: data.noOfSeats,
+            status: Enums.BOOKING_STATUS.PENDING,
+            totalcost:data.noOfSeats*flightData.price
         });
+        let paymentSuccessful = true;
+        if (paymentSuccessful) {
+
+            booking.status = Enums.BOOKING_STATUS.BOOKED,
+            await booking.save();
+
+            return booking;
+        }
+        await axios.patch(
+            `${process.env.FLIGHT_SERVICE}/api/v1/flights/${data.flightId}/seats`,
+            {
+                seats: data.noOfSeats,
+                dec: false
+            }
+        );
+        booking.status = Enums.BOOKING_STATUS.CANCELLED;
+        await booking.save();
+        throw new AppError(
+            'Payment failed',
+            StatusCodes.BAD_REQUEST
+        );
 
     } catch (error) {
-        throw error;
+
+        if (error instanceof AppError) {
+            throw error;
+        }
+        if (error.response) {
+            throw new AppError(
+                error.response.data.message || 'Flight service error',
+                error.response.status || StatusCodes.BAD_REQUEST
+            );
+        }
+        throw new AppError(
+            error.message,
+            StatusCodes.INTERNAL_SERVER_ERROR
+        );
     }
 }
 
